@@ -1,3 +1,4 @@
+import { App } from '@capacitor/app';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { marked } from 'marked';
 import { Client, DEFAULTS, clean, getPref, setPref, newSessionId } from './api.js';
@@ -668,23 +669,24 @@ $('card-automate').onclick = () => openSheet('modal-clock');
 // ----------------- System Control Modal -----------------
 $('btn-close-system').onclick = () => closeSheet('modal-system');
 
-$('sys-maps').onclick = () => {
-  if (confirm('Open Google Maps for location and navigation?')) {
-    window.open('https://maps.google.com', '_blank');
+const openExternalLink = (url, label) => {
+  toast(`Opening ${label}...`, 'info');
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } catch {
+    toast(`Please open ${url} in browser.`, 'info');
   }
 };
 
-$('sys-calendar').onclick = () => {
-  if (confirm('Open Google Calendar in browser?')) {
-    window.open('https://calendar.google.com/calendar/u/0/r', '_blank');
-  }
-};
-
-$('sys-gmail').onclick = () => {
-  if (confirm('Open Gmail in browser?')) {
-    window.open('https://mail.google.com', '_blank');
-  }
-};
+$('sys-maps').onclick = () => openExternalLink('https://maps.google.com', 'Google Maps');
+$('sys-calendar').onclick = () => openExternalLink('https://calendar.google.com', 'Google Calendar');
+$('sys-gmail').onclick = () => openExternalLink('https://mail.google.com', 'Gmail');
 
 $('sys-clock').onclick = () => {
   closeSheet('modal-system');
@@ -1252,22 +1254,46 @@ $('btn-perm-notif').onclick = async () => {
   toast('Notification permission: ' + res, res === 'granted' ? 'success' : 'info');
 };
 
-// Privacy Actions
+// Privacy Actions (with safe non-blocking 2-tap confirmation)
+let clearChatPending = false;
+let clearChatTimer = null;
 $('btn-clear-chat').onclick = async () => {
-  if (confirm('Clear all conversation history?')) {
-    cache = [];
-    await setPref('chat_' + sessionId, '[]');
-    renderMessages();
-    toast('Conversation history erased.', 'info');
+  if (!clearChatPending) {
+    clearChatPending = true;
+    $('btn-clear-chat').textContent = 'Confirm?';
+    clearTimeout(clearChatTimer);
+    clearChatTimer = setTimeout(() => {
+      clearChatPending = false;
+      $('btn-clear-chat').textContent = 'Clear';
+    }, 3500);
+    return;
   }
+  clearChatPending = false;
+  $('btn-clear-chat').textContent = 'Clear';
+  cache = [];
+  await setPref('chat_' + sessionId, '[]');
+  renderMessages();
+  toast('Conversation history erased.', 'info');
 };
 
+let clearFilesPending = false;
+let clearFilesTimer = null;
 $('btn-clear-files').onclick = async () => {
-  if (confirm('Delete all saved Vault files?')) {
-    await setPref('saved_files', '[]');
-    renderFilesVault();
-    toast('Saved Vault files erased.', 'info');
+  if (!clearFilesPending) {
+    clearFilesPending = true;
+    $('btn-clear-files').textContent = 'Confirm?';
+    clearTimeout(clearFilesTimer);
+    clearFilesTimer = setTimeout(() => {
+      clearFilesPending = false;
+      $('btn-clear-files').textContent = 'Clear';
+    }, 3500);
+    return;
   }
+  clearFilesPending = false;
+  $('btn-clear-files').textContent = 'Clear';
+  await setPref('saved_files', '[]');
+  renderFilesVault();
+  toast('Saved Vault files erased.', 'info');
 };
 
 $('btn-clear-search').onclick = async () => {
@@ -1496,6 +1522,108 @@ async function pingStatus() {
 
   await client.load();
   await loadSession();
+
+  // Global unhandled error resilience
+  window.addEventListener('error', (e) => {
+    console.warn('[JARVIS runtime error caught]', e?.message || e);
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    console.warn('[JARVIS unhandled rejection caught]', e?.reason || e);
+  });
+
+  // Android Hardware & Gesture Back Button Handling (Prevents accidental app closing)
+  let lastBackPress = 0;
+  function handleSafeBack() {
+    // 0. If soft keyboard or active input is focused, blur it first to dismiss keyboard safely
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+      document.activeElement.blur();
+      return true;
+    }
+
+    // 1. Dismiss image zoom overlay if active
+    const zoom = $('zoom');
+    if (zoom && !zoom.classList.contains('hidden')) {
+      zoom.classList.add('hidden');
+      return true;
+    }
+
+    // 2. Dismiss cinematic intro overlay if active
+    const intro = $('intro-overlay');
+    if (intro && !intro.classList.contains('hidden')) {
+      intro.classList.add('intro-dissolve');
+      setTimeout(() => intro.classList.add('hidden'), 450);
+      return true;
+    }
+
+    // 3. Close any open sheets or modals
+    const openSheets = Array.from(document.querySelectorAll('.sheet:not(.hidden)'));
+    if (openSheets.length > 0) {
+      openSheets.forEach((s) => s.classList.add('hidden'));
+      return true;
+    }
+
+    // 4. Stop speech or voice recognition if active
+    if (isListening || audio.isSpeaking()) {
+      audio.stopRecognition();
+      audio.stopSpeaking();
+      setVoiceUIState('IDLE');
+      return true;
+    }
+
+    // 5. If on Commands, Chat, or Files tab, navigate back to Home tab
+    if (activeTab !== 'home') {
+      switchTab('home');
+      return true;
+    }
+
+    // 6. On Home tab: double back press within 2s to exit
+    const now = Date.now();
+    if (now - lastBackPress < 2000) {
+      try {
+        App.exitApp();
+      } catch {
+        // browser environment
+      }
+      return false;
+    } else {
+      lastBackPress = now;
+      toast('Press back again to exit JARVIS.', 'info', 2000);
+      return true;
+    }
+  }
+
+  try {
+    App.addListener('backButton', () => {
+      handleSafeBack();
+    });
+
+    // App state changes (suspend background animations to prevent Android OS killing the app)
+    App.addListener('appStateChange', ({ isActive }) => {
+      if (!isActive) {
+        visualizer?.stop();
+        bgParticles?.stop();
+        audio.stopRecognition();
+        audio.stopSpeaking();
+      } else {
+        visualizer?.start();
+        bgParticles?.start();
+        if (client.configured) pingStatus();
+      }
+    });
+  } catch (err) {
+    console.warn('[Capacitor App listeners not available]', err);
+  }
+
+  // Web popstate trap to prevent accidental browser back exits
+  try {
+    window.history.pushState({ page: 'jarvis' }, '');
+    window.addEventListener('popstate', () => {
+      window.history.pushState({ page: 'jarvis' }, '');
+      handleSafeBack();
+    });
+  } catch {
+    // ignore
+  }
 
   playCinematicIntro(false);
 

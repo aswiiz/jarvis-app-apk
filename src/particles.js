@@ -17,9 +17,14 @@ export class HolographicBackground {
     this.resize();
     this.initParticles();
 
+    let lastW = window.innerWidth;
     window.addEventListener('resize', () => {
+      const curW = window.innerWidth;
       this.resize();
-      this.initParticles();
+      if (Math.abs(curW - lastW) > 50) {
+        lastW = curW;
+        this.initParticles();
+      }
     });
 
     const handlePointer = (e) => {

@@ -31,7 +31,7 @@ jobs:
       - name: Set app icon and permissions
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml
-          for PERM in "android.permission.INTERNET" "android.permission.RECORD_AUDIO" "android.permission.CAMERA" "android.permission.MODIFY_AUDIO_SETTINGS"; do
+          for PERM in "android.permission.INTERNET" "android.permission.ACCESS_NETWORK_STATE" "android.permission.RECORD_AUDIO" "android.permission.CAMERA" "android.permission.MODIFY_AUDIO_SETTINGS" "android.permission.VIBRATE" "android.permission.READ_MEDIA_IMAGES" "android.permission.READ_EXTERNAL_STORAGE"; do
             grep -q "$PERM" "$MANIFEST" || \
               sed -i "s#<application#<uses-permission android:name=\"$PERM\" />\n    <application#" "$MANIFEST"
           done

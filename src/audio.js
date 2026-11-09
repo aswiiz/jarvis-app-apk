@@ -8,6 +8,9 @@ class AudioEngine {
     this.dataArray = null;
     this.soundEnabled = true;
 
+    this.unlocked = false;
+    this.isRecognizing = false;
+
     // Speech Recognition
     const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
     this.recSupported = !!SpeechRec;
@@ -27,17 +30,36 @@ class AudioEngine {
         this.synth.onvoiceschanged = () => this.loadVoices();
       }
     }
+
+    // Auto-unlock AudioContext on first user interaction (touch or click)
+    const unlock = () => {
+      this.unlocked = true;
+      this.initAudioContext();
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('touchstart', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+    window.addEventListener('pointerdown', unlock, { passive: true });
+    window.addEventListener('touchstart', unlock, { passive: true });
+    window.addEventListener('keydown', unlock, { passive: true });
   }
 
   initAudioContext() {
-    if (!this.ctx) {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (AudioContext) {
-        this.ctx = new AudioContext();
+    try {
+      if (!this.ctx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (AudioContext) {
+          this.ctx = new AudioContext();
+        }
       }
-    }
-    if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume();
+      if (this.ctx && this.ctx.state === 'suspended' && this.unlocked) {
+        const p = this.ctx.resume();
+        if (p && typeof p.catch === 'function') {
+          p.catch(() => {});
+        }
+      }
+    } catch {
+      // AudioContext autoplay policy or unsupported
     }
   }
 
@@ -205,12 +227,18 @@ class AudioEngine {
       return;
     }
 
+    if (this.isRecognizing) {
+      this.stopRecognition();
+    }
+
     this.playChime('start');
     this.startMicAnalyzer();
 
     let recognizedText = '';
+    this.isRecognizing = true;
 
     this.recognition.onstart = () => {
+      this.isRecognizing = true;
       onStart?.();
     };
 
@@ -227,11 +255,13 @@ class AudioEngine {
     };
 
     this.recognition.onerror = (err) => {
+      this.isRecognizing = false;
       this.stopMicAnalyzer();
       onError?.(err);
     };
 
     this.recognition.onend = () => {
+      this.isRecognizing = false;
       this.stopMicAnalyzer();
       onEnd?.(recognizedText);
     };
@@ -239,11 +269,12 @@ class AudioEngine {
     try {
       this.recognition.start();
     } catch {
-      // already started or busy
+      this.isRecognizing = false;
     }
   }
 
   stopRecognition() {
+    this.isRecognizing = false;
     if (this.recognition) {
       try {
         this.recognition.stop();

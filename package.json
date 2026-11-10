@@ -10,6 +10,7 @@
     "lint": "vite build"
   },
   "dependencies": {
+    "@capacitor-community/speech-recognition": "6.0.1",
     "@capacitor/android": "^6.1.2",
     "@capacitor/app": "^6.0.2",
     "@capacitor/camera": "^6.0.2",

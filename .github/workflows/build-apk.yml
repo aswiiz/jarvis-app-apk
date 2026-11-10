@@ -35,6 +35,8 @@ jobs:
             grep -q "$PERM" "$MANIFEST" || \
               sed -i "s#<application#<uses-permission android:name=\"$PERM\" />\n    <application#" "$MANIFEST"
           done
+          grep -q "android.speech.RecognitionService" "$MANIFEST" || \
+            sed -i "s#</manifest>#    <queries>\n        <intent>\n            <action android:name=\"android.speech.RecognitionService\" />\n        </intent>\n    </queries>\n</manifest>#" "$MANIFEST"
 
       - name: Sync
         run: npx cap sync android

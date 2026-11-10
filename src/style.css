@@ -1524,6 +1524,56 @@ details.steps summary {
   box-shadow: 0 0 10px var(--accent-glow);
 }
 
+.token-input-wrap {
+  display: flex;
+  align-items: center;
+  position: relative;
+  width: 100%;
+}
+
+.token-input-wrap input {
+  padding-right: 80px !important;
+  font-family: monospace;
+  font-size: 13px !important;
+  letter-spacing: 0.04em;
+}
+
+.btn-token-toggle {
+  position: absolute;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 6px 8px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: color var(--trans-fast), background var(--trans-fast);
+  z-index: 2;
+}
+
+.btn-token-toggle:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+#btn-toggle-token-vis {
+  right: 40px;
+}
+
+#btn-clear-token {
+  right: 8px;
+}
+
+.settings-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
 .settings-row-item {
   display: flex;
   align-items: center;

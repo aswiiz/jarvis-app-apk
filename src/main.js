@@ -2,7 +2,7 @@ import { App } from '@capacitor/app';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { marked } from 'marked';
 import { Client, DEFAULTS, clean, getPref, setPref, newSessionId } from './api.js';
-import { audio } from './audio.js';
+import { audio, formatVoiceError } from './audio.js';
 import { JarvisVisualizer } from './visualizer.js';
 import { HolographicBackground } from './particles.js';
 import {
@@ -177,7 +177,13 @@ function setVoiceUIState(state) {
   }
 }
 
+let voiceLock = false;
+
 async function handleVoiceInteraction() {
+  if (voiceLock) return;
+  voiceLock = true;
+  setTimeout(() => { voiceLock = false; }, 400);
+
   if (audio.isSpeaking()) {
     audio.stopSpeaking();
     setVoiceUIState('IDLE');
@@ -185,14 +191,14 @@ async function handleVoiceInteraction() {
   }
 
   if (isListening) {
-    audio.stopRecognition();
+    await audio.stopRecognition();
     isListening = false;
     setVoiceUIState('IDLE');
     return;
   }
 
   if (!audio.recSupported) {
-    toast('Speech recognition not supported in this browser. You can type in Chat.', 'info');
+    toast('Speech recognition not supported on this device. You can type in Chat.', 'info');
     switchTab('chat');
     return;
   }
@@ -202,20 +208,32 @@ async function handleVoiceInteraction() {
 
   audio.startRecognition({
     onStart: () => {
+      isListening = true;
       setVoiceUIState('LISTENING');
     },
     onResult: (transcript, isFinal) => {
       const p = $('voice-transcript');
-      if (p) p.textContent = `"${transcript}"`;
-      if (isFinal) {
-        // Recognition complete
+      if (p) {
+        p.textContent = `"${transcript}"`;
+        p.classList.remove('hidden');
       }
     },
     onError: (err) => {
       isListening = false;
       setVoiceUIState('IDLE');
-      if (!/no-speech|aborted/i.test(err?.error || err?.message || '')) {
-        toast('Microphone error: ' + (err.error || err.message || 'Permission denied'), 'error');
+      const errInfo = formatVoiceError(err);
+      if (errInfo.userMessage) {
+        toast(errInfo.userMessage, 'error', 6000);
+      }
+      if (errInfo.suggestChat) {
+        setTimeout(() => {
+          if (activeTab === 'home') {
+            toast('Opening Chat — you can type your message directly.', 'info', 3500);
+            switchTab('chat');
+            const inp = $('input');
+            if (inp) inp.focus();
+          }
+        }, 1800);
       }
     },
     onEnd: async (finalText) => {
@@ -1161,7 +1179,36 @@ document.querySelectorAll('.settings-tabs-bar .settings-nav-btn').forEach((btn) 
 async function populateSettingsUI() {
   $('set-url').value = await getPref('backend_url', DEFAULTS.url);
   $('set-url2').value = await getPref('backend_url2', DEFAULTS.url2);
-  $('set-token').value = await getPref('app_token', '');
+  $('set-token').value = await getPref('app_token', DEFAULTS.token);
+
+  // Wire up token show/hide and clear buttons
+  const tokenInp = $('set-token');
+  const btnToggleVis = $('btn-toggle-token-vis');
+  const btnClr = $('btn-clear-token');
+
+  if (btnToggleVis && tokenInp) {
+    btnToggleVis.onclick = (e) => {
+      e.preventDefault();
+      if (tokenInp.type === 'password') {
+        tokenInp.type = 'text';
+        btnToggleVis.textContent = '🔒';
+        btnToggleVis.title = 'Hide Token';
+      } else {
+        tokenInp.type = 'password';
+        btnToggleVis.textContent = '👁️';
+        btnToggleVis.title = 'Show Token';
+      }
+    };
+  }
+
+  if (btnClr && tokenInp) {
+    btnClr.onclick = (e) => {
+      e.preventDefault();
+      tokenInp.value = '';
+      tokenInp.focus();
+      toast('App Token cleared. Tap Save Configuration to persist.', 'info');
+    };
+  }
 
   // Populate Voices
   const voices = audio.getVoices();
@@ -1339,22 +1386,33 @@ $('btn-save-settings').onclick = async () => {
 
 $('btn-test').onclick = async () => {
   const out = $('test-result');
-  const bases = [clean($('set-url').value), clean($('set-url2').value)].filter(Boolean);
-  if (!bases.length) {
-    out.textContent = 'Enter a Backend URL first.';
+  const primary = clean($('set-url').value);
+  const backup = clean($('set-url2').value);
+  const testToken = $('set-token').value.trim();
+
+  if (!primary && !backup) {
+    out.textContent = 'Enter at least one Backend URL first.';
     return;
   }
-  out.textContent = 'Testing connection... (Render free servers can take up to 60s to wake up)';
-  const lines = [];
-  for (const b of bases) {
-    try {
-      const d = await new Client().health(b, 60000);
-      lines.push(`✅ ${b}\n   Storage: ${d.storage || 'active'}, Providers: ${(d.llm_providers || []).join(', ') || 'JARVIS Default'}, HF: ${d.huggingface || 'online'}`);
-    } catch (e) {
-      lines.push(`❌ ${b}\n   ${e.message}`);
-    }
+
+  out.textContent = 'CHECKING... (probing /health & verifying App Token authentication)';
+
+  try {
+    const results = await client.testConnection(primary, backup, testToken);
+    const lines = results.map((r) => {
+      if (r.online) {
+        const isOk = r.statusText.includes('VALID');
+        const icon = isOk ? '✅' : r.statusText.includes('INVALID') ? '⚠️' : 'ℹ️';
+        return `${icon} ${r.statusText} — ${r.name}\n   URL: ${r.url}\n   Storage: ${r.storage} | Models: ${r.providers}\n   Authentication: ${r.tokenStatus}`;
+      } else {
+        return `❌ ${r.statusText} — ${r.name}\n   URL: ${r.url}\n   Error: ${r.error}`;
+      }
+    });
+
+    out.textContent = lines.join('\n\n');
+  } catch (err) {
+    out.textContent = 'CONNECTION ERROR: ' + (err.message || 'Test failed');
   }
-  out.textContent = lines.join('\n');
 };
 
 // ----------------- Cinematic Intro Sequence -----------------
@@ -1597,14 +1655,23 @@ async function pingStatus() {
       handleSafeBack();
     });
 
-    // App state changes (suspend background animations to prevent Android OS killing the app)
+    // App state changes (suspend background animations with permission dialog grace period)
+    let appBackgroundTimer = null;
     App.addListener('appStateChange', ({ isActive }) => {
       if (!isActive) {
         visualizer?.stop();
         bgParticles?.stop();
-        audio.stopRecognition();
-        audio.stopSpeaking();
+        // 3.5s grace period: prevents Android system permission dialogs from prematurely aborting speech recognition
+        appBackgroundTimer = setTimeout(() => {
+          if (audio.isRecognizing) audio.stopRecognition();
+          if (audio.isSpeaking()) audio.stopSpeaking();
+          setVoiceUIState('IDLE');
+        }, 3500);
       } else {
+        if (appBackgroundTimer) {
+          clearTimeout(appBackgroundTimer);
+          appBackgroundTimer = null;
+        }
         visualizer?.start();
         bgParticles?.start();
         if (client.configured) pingStatus();

@@ -13,10 +13,11 @@ export async function setPref(key, value) {
   try { await Preferences.set({ key, value }); } catch { localStorage.setItem(key, value); }
 }
 
-// Pre-filled on first launch only. Editable in Settings; never contains keys.
+// Pre-filled on first launch. Fully configurable and editable in Settings.
 export const DEFAULTS = {
   url: 'https://jarvis-ukcy.onrender.com',
   url2: 'https://jarviss-eight.vercel.app',
+  token: '1debfbd14a5492eb24f884d8ee85c68656f83bd2b9a647bb9221046afa722e3e',
 };
 
 export const clean = (u) => (u || '').trim().replace(/\/+$/, '');
@@ -59,7 +60,7 @@ async function parse(res) {
   }
 }
 
-// ---- client with failover --------------------------------------------------
+// ---- client with failover & token auth --------------------------------------
 export class Client {
   constructor() {
     this.bases = [];
@@ -76,7 +77,15 @@ export class Client {
       clean(url === '__unset__' ? DEFAULTS.url : url),
       clean(url2 === '__unset__' ? DEFAULTS.url2 : url2),
     ].filter(Boolean);
-    this.token = await getPref('app_token', '');
+
+    const savedToken = await getPref('app_token', '__unset__');
+    if (savedToken === '__unset__') {
+      this.token = DEFAULTS.token;
+      await setPref('app_token', DEFAULTS.token);
+    } else {
+      this.token = savedToken;
+    }
+
     this.active = this.bases[0] || null;
   }
 
@@ -91,6 +100,67 @@ export class Client {
   async health(base, ms = 5000) {
     const res = await rawFetch(`${base}/health`, { method: 'GET' }, ms);
     return parse(res);
+  }
+
+  // Lightweight harmless authentication check against /history/auth-check-ping
+  async testAuth(base, token, ms = 12000) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['X-API-Token'] = token;
+    const res = await rawFetch(`${base}/history/auth-check-ping`, { method: 'GET', headers }, ms);
+    if (res.status === 401) {
+      throw new ApiError('Invalid or missing authentication token', 401);
+    }
+    return parse(res);
+  }
+
+  // Comprehensive test for Settings UI
+  async testConnection(primaryUrl, backupUrl, tokenToTest) {
+    const targets = [
+      { name: 'Primary (Render)', url: clean(primaryUrl) },
+      { name: 'Backup (Vercel)', url: clean(backupUrl) },
+    ].filter((t) => t.url);
+
+    const results = [];
+    for (const target of targets) {
+      try {
+        const hData = await this.health(target.url, 15000);
+        let tokenStatus = 'NOT CONFIGURED';
+        let isTokenValid = true;
+
+        if (tokenToTest) {
+          try {
+            await this.testAuth(target.url, tokenToTest, 12000);
+            tokenStatus = 'VALID (HTTP 200)';
+          } catch (authErr) {
+            if (authErr.status === 401) {
+              tokenStatus = 'INVALID TOKEN (HTTP 401)';
+              isTokenValid = false;
+            } else {
+              tokenStatus = `AUTH PING: ${authErr.message}`;
+            }
+          }
+        }
+
+        results.push({
+          name: target.name,
+          url: target.url,
+          online: true,
+          statusText: !tokenToTest ? 'CONNECTED (NO TOKEN)' : isTokenValid ? 'CONNECTED (TOKEN VALID)' : 'INVALID TOKEN',
+          storage: hData.storage || 'active',
+          providers: (hData.llm_providers || []).join(', ') || 'JARVIS Core',
+          tokenStatus,
+        });
+      } catch (err) {
+        results.push({
+          name: target.name,
+          url: target.url,
+          online: false,
+          statusText: 'SERVER OFFLINE',
+          error: err.message || 'Cannot reach server',
+        });
+      }
+    }
+    return results;
   }
 
   // Race all backends; first healthy one wins.
@@ -118,10 +188,10 @@ export class Client {
     if (activeList.includes(norm) || activeList.some((p) => p.includes(norm))) {
       return { id: norm, name: providerId, status: 'ready', label: 'Online on Server' };
     }
-    if (['gemini', 'groq', 'mistral', 'openrouter', 'openai'].includes(norm)) {
-      return { id: norm, name: providerId, status: 'server-config', label: 'Requires Server Key' };
+    if (['gemini', 'groq', 'mistral', 'openrouter', 'openai', 'llm7', 'pollinations'].includes(norm)) {
+      return { id: norm, name: providerId, status: 'server-config', label: 'Server Ready' };
     }
-    return { id: norm, name: providerId, status: 'unintegrated', label: 'Not Integrated' };
+    return { id: norm, name: providerId, status: 'unintegrated', label: 'External' };
   }
 
   // Wake-up logic: probe now, then every 5s for up to 90s.
@@ -167,6 +237,7 @@ export class Client {
   chat(message, session_id, files) {
     return this.request('/chat', { method: 'POST', body: JSON.stringify({ message, session_id, files }) }, 180000);
   }
+
   history(session_id) {
     return this.request(`/history/${encodeURIComponent(session_id)}`, { method: 'GET' }, 30000);
   }

@@ -465,21 +465,23 @@
       <!-- Panel 7: Advanced (Backend Configuration) -->
       <div id="spanel-advanced" class="settings-panel hidden">
         <div class="settings-group">
-          <label>Primary Backend URL (Render)
-            <input id="set-url" type="url" placeholder="https://jarvis-ukcy.onrender.com" autocapitalize="off" autocomplete="off" />
-          </label>
+          <label for="set-url">Primary Backend URL (Render)</label>
+          <input id="set-url" type="url" placeholder="https://jarvis-ukcy.onrender.com" autocapitalize="off" autocomplete="off" />
         </div>
 
         <div class="settings-group">
-          <label>Backup URL (Vercel Failover)
-            <input id="set-url2" type="url" placeholder="https://jarviss-eight.vercel.app" autocapitalize="off" autocomplete="off" />
-          </label>
+          <label for="set-url2">Backup URL (Vercel Failover)</label>
+          <input id="set-url2" type="url" placeholder="https://jarviss-eight.vercel.app" autocapitalize="off" autocomplete="off" />
         </div>
 
         <div class="settings-group">
-          <label>App Token (`X-API-Token`)
-            <input id="set-token" type="password" placeholder="Leave blank if unauthenticated" autocomplete="off" />
-          </label>
+          <label for="set-token">App API Token (<code style="color:var(--accent);">X-API-Token</code>)</label>
+          <div class="token-input-wrap">
+            <input id="set-token" type="password" placeholder="Enter App API Token" autocomplete="off" spellcheck="false" />
+            <button id="btn-toggle-token-vis" type="button" class="btn-token-toggle" aria-label="Toggle token visibility" title="Show/Hide Token">👁️</button>
+            <button id="btn-clear-token" type="button" class="btn-token-toggle" aria-label="Clear token" title="Clear Token">✕</button>
+          </div>
+          <div class="settings-hint">Stored securely in device storage. Passed as X-API-Token for /chat and /history.</div>
         </div>
 
         <div id="test-result" class="test-result"></div>

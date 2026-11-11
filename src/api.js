@@ -65,6 +65,8 @@ export class Client {
   constructor() {
     this.bases = [];
     this.token = '';
+    this.authToken = '';
+    this.authUser = null;
     this.active = null;
     this.lastOk = 0;
     this.healthData = null;
@@ -86,10 +88,21 @@ export class Client {
       this.token = savedToken;
     }
 
+    this.authToken = await getPref('auth_jwt', '');
+    try {
+      const uStr = await getPref('auth_user', '');
+      this.authUser = uStr ? JSON.parse(uStr) : null;
+    } catch {
+      this.authUser = null;
+    }
+
     this.active = this.bases[0] || null;
+    // Probe in background on load to quickly route to fastest responding backend
+    this.probe(4000).catch(() => {});
   }
 
   get configured() { return this.bases.length > 0; }
+  get isAuthenticated() { return !!this.authToken; }
 
   // Order to try: active first, then the others.
   ordered() {
@@ -213,33 +226,230 @@ export class Client {
   headers(json = true) {
     const h = {};
     if (this.token) h['X-API-Token'] = this.token;
+    if (this.authToken) h['Authorization'] = `Bearer ${this.authToken}`;
     if (json) h['Content-Type'] = 'application/json';
     return h;
   }
 
-  // Try the active backend; on network failure or 503, fail over once to the other(s).
-  async request(path, opts, ms) {
-    let lastErr;
-    for (const base of this.ordered()) {
-      try {
-        const res = await rawFetch(`${base}${path}`, { ...opts, headers: this.headers(!!opts?.body) }, ms);
-        const data = await parse(res);
-        this.active = base; this.lastOk = Date.now();
-        return data;
-      } catch (e) {
-        lastErr = e;
-        if (!(e.network || e.status === 503 || e.status >= 500)) throw e; // 400/401/413: don't fail over
-      }
+  // Fast request with early failover:
+  // Starts active backend. If no response within 4s, kicks off the backup backend in parallel.
+  // Whichever healthy backend finishes first resolves and becomes the active route!
+  async request(path, opts, ms = 45000) {
+    const bases = this.ordered();
+    if (!bases.length) {
+      throw new ApiError('No backend URLs configured.', 0, true);
     }
-    throw lastErr;
+    if (bases.length === 1) {
+      const res = await rawFetch(`${bases[0]}${path}`, { ...opts, headers: this.headers(!!opts?.body) }, ms);
+      const data = await parse(res);
+      this.active = bases[0];
+      this.lastOk = Date.now();
+      return data;
+    }
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const errors = [];
+      const controllers = [];
+
+      const attempt = async (base) => {
+        const c = new AbortController();
+        controllers.push(c);
+        try {
+          const res = await withTimeout(
+            fetch(`${base}${path}`, { ...opts, headers: this.headers(!!opts?.body), signal: c.signal }),
+            ms,
+            c
+          );
+          const data = await parse(res);
+          if (!settled) {
+            settled = true;
+            this.active = base;
+            this.lastOk = Date.now();
+            controllers.forEach((ctrl) => { if (ctrl !== c) ctrl.abort(); });
+            resolve(data);
+          }
+        } catch (err) {
+          if (err.status === 401) {
+            settled = true;
+            controllers.forEach((ctrl) => ctrl.abort());
+            reject(err);
+            return;
+          }
+          errors.push(err);
+          if (errors.length >= bases.length && !settled) {
+            settled = true;
+            reject(errors[0] || new ApiError('All backends failed.', 0, true));
+          }
+        }
+      };
+
+      // Try primary/active backend immediately
+      attempt(bases[0]);
+
+      // If active backend takes more than 4000ms (e.g. Render cold start), race backup
+      const backupTimer = setTimeout(() => {
+        if (!settled && bases[1]) {
+          attempt(bases[1]);
+        }
+      }, 4000);
+    });
   }
 
   chat(message, session_id, files) {
-    return this.request('/chat', { method: 'POST', body: JSON.stringify({ message, session_id, files }) }, 180000);
+    return this.request('/chat', { method: 'POST', body: JSON.stringify({ message, session_id, files }) }, 60000);
   }
 
   history(session_id) {
-    return this.request(`/history/${encodeURIComponent(session_id)}`, { method: 'GET' }, 30000);
+    return this.request(`/history/${encodeURIComponent(session_id)}`, { method: 'GET' }, 20000);
+  }
+
+  // ================= User Authentication APIs =================
+  async login(email, password) {
+    const data = await this.request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    }, 25000);
+
+    const token = data.token || data.access_token || data.jwt || '';
+    const user = data.user || { email, name: data.name || email.split('@')[0] };
+
+    if (token) {
+      this.authToken = token;
+      this.authUser = user;
+      await setPref('auth_jwt', token);
+      await setPref('auth_user', JSON.stringify(user));
+    }
+    return { token, user, data };
+  }
+
+  async register(name, email, password) {
+    const data = await this.request('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ name, email, password }),
+    }, 25000);
+
+    const token = data.token || data.access_token || data.jwt || '';
+    const user = data.user || { name, email };
+
+    if (token) {
+      this.authToken = token;
+      this.authUser = user;
+      await setPref('auth_jwt', token);
+      await setPref('auth_user', JSON.stringify(user));
+    }
+    return { token, user, data };
+  }
+
+  async forgotPassword(email) {
+    return this.request('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }, 20000);
+  }
+
+  async resetPassword(token, new_password) {
+    return this.request('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, new_password }),
+    }, 20000);
+  }
+
+  async verifyEmail(code, email) {
+    return this.request('/auth/verify-email', {
+      method: 'POST',
+      body: JSON.stringify({ code, email }),
+    }, 20000);
+  }
+
+  async getMe() {
+    return this.request('/auth/me', { method: 'GET' }, 15000);
+  }
+
+  async logout() {
+    this.authToken = '';
+    this.authUser = null;
+    await setPref('auth_jwt', '');
+    await setPref('auth_user', '');
+  }
+
+  // ================= Gmail Integration APIs =================
+  async getGmailStatus() {
+    try {
+      return await this.request('/gmail/status', { method: 'GET' }, 15000);
+    } catch (e) {
+      // Try fallback /gmail/me if /gmail/status is not defined
+      try {
+        return await this.request('/gmail/me', { method: 'GET' }, 12000);
+      } catch {
+        throw e;
+      }
+    }
+  }
+
+  async getGmailAuthUrl() {
+    return this.request('/gmail/auth/url', { method: 'GET' }, 15000);
+  }
+
+  async getGmailMessages({ folder = 'INBOX', q = '', page = 1, limit = 15 } = {}) {
+    const params = new URLSearchParams();
+    if (folder) params.set('folder', folder);
+    if (q) params.set('q', q);
+    if (page) params.set('page', page);
+    if (limit) params.set('limit', limit);
+    return this.request(`/gmail/messages?${params.toString()}`, { method: 'GET' }, 25000);
+  }
+
+  async getGmailMessage(id) {
+    return this.request(`/gmail/messages/${encodeURIComponent(id)}`, { method: 'GET' }, 20000);
+  }
+
+  async sendGmail({ to, subject, body, cc = '', bcc = '' }) {
+    return this.request('/gmail/send', {
+      method: 'POST',
+      body: JSON.stringify({ to, subject, body, cc, bcc }),
+    }, 30000);
+  }
+
+  async replyGmail({ messageId, threadId, to, subject, body }) {
+    return this.request('/gmail/reply', {
+      method: 'POST',
+      body: JSON.stringify({ messageId, threadId, to, subject, body }),
+    }, 30000);
+  }
+
+  async toggleStarGmail(messageId, starred = true) {
+    return this.request('/gmail/star', {
+      method: 'POST',
+      body: JSON.stringify({ messageId, starred }),
+    }, 15000);
+  }
+
+  async trashGmail(messageId) {
+    return this.request('/gmail/trash', {
+      method: 'POST',
+      body: JSON.stringify({ messageId }),
+    }, 15000);
+  }
+
+  // ================= Google Calendar Integration APIs =================
+  async getCalendarEvents() {
+    return this.request('/calendar/events', { method: 'GET' }, 20000);
+  }
+
+  async createCalendarEvent({ summary, description, start, end, location }) {
+    return this.request('/calendar/events/create', {
+      method: 'POST',
+      body: JSON.stringify({ summary, description, start, end, location }),
+    }, 25000);
+  }
+
+  async deleteCalendarEvent(id) {
+    try {
+      return await this.request(`/calendar/events/${encodeURIComponent(id)}`, { method: 'DELETE' }, 20000);
+    } catch {
+      return await this.request(`/calendar/events/${encodeURIComponent(id)}/delete`, { method: 'POST' }, 20000);
+    }
   }
 }
 

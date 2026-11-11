@@ -36,6 +36,159 @@
     <button id="intro-skip-btn" class="intro-skip-btn" aria-label="Skip Intro">Skip [✕]</button>
   </div>
 
+  <!-- Mandatory First Screen: User Authentication Overlay -->
+  <div id="auth-overlay" class="auth-overlay hidden">
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="auth-emblem-wrap">
+          <img src="/src/assets/images/jarvis_avatar_1794246653041.jpg" alt="JARVIS Core" class="auth-emblem" />
+        </div>
+        <h1 class="auth-title"><span class="spark">✦</span> JARVIS</h1>
+        <p class="auth-subtitle">Just A Rather Very Intelligent System</p>
+      </div>
+
+      <!-- Error / Notification banner -->
+      <div id="auth-error-banner" class="auth-error-banner hidden">
+        <span id="auth-error-text">Authentication failed.</span>
+      </div>
+
+      <!-- VIEW 1: LOGIN -->
+      <div id="auth-view-login" class="auth-form-view">
+        <h2 class="auth-view-title">User Authentication</h2>
+        <p class="auth-view-desc">Sign in to initialize personal neural assistant</p>
+
+        <div class="auth-field">
+          <label for="auth-login-email">Email Address</label>
+          <input id="auth-login-email" type="email" placeholder="name@example.com" autocomplete="email" required />
+        </div>
+
+        <div class="auth-field">
+          <div class="auth-label-row">
+            <label for="auth-login-pass">Password</label>
+            <button type="button" id="link-to-forgot" class="auth-link-subtle">Forgot Password?</button>
+          </div>
+          <div class="auth-input-wrapper">
+            <input id="auth-login-pass" type="password" placeholder="••••••••" autocomplete="current-password" required />
+            <button type="button" id="btn-toggle-login-pass" class="btn-input-icon" title="Toggle password visibility">👁️</button>
+          </div>
+        </div>
+
+        <div class="auth-checkbox-row">
+          <label class="auth-checkbox-label">
+            <input id="auth-login-remember" type="checkbox" checked />
+            <span>Remember session on this device</span>
+          </label>
+        </div>
+
+        <button id="btn-auth-login" class="btn primary auth-submit-btn">Sign In to JARVIS</button>
+
+        <div class="auth-footer-nav">
+          <span>New to JARVIS?</span>
+          <button type="button" id="link-to-register" class="auth-link-highlight">Create Account</button>
+        </div>
+      </div>
+
+      <!-- VIEW 2: REGISTRATION -->
+      <div id="auth-view-register" class="auth-form-view hidden">
+        <h2 class="auth-view-title">Create Account</h2>
+        <p class="auth-view-desc">Register a new profile with the JARVIS neural core</p>
+
+        <div class="auth-field">
+          <label for="auth-reg-name">Full Name</label>
+          <input id="auth-reg-name" type="text" placeholder="Tony Stark" autocomplete="name" required />
+        </div>
+
+        <div class="auth-field">
+          <label for="auth-reg-email">Email Address</label>
+          <input id="auth-reg-email" type="email" placeholder="name@example.com" autocomplete="email" required />
+        </div>
+
+        <div class="auth-field">
+          <label for="auth-reg-pass">Password</label>
+          <div class="auth-input-wrapper">
+            <input id="auth-reg-pass" type="password" placeholder="At least 6 characters" autocomplete="new-password" required />
+            <button type="button" id="btn-toggle-reg-pass" class="btn-input-icon" title="Toggle password visibility">👁️</button>
+          </div>
+        </div>
+
+        <div class="auth-field">
+          <label for="auth-reg-pass-confirm">Confirm Password</label>
+          <input id="auth-reg-pass-confirm" type="password" placeholder="Re-enter password" autocomplete="new-password" required />
+        </div>
+
+        <button id="btn-auth-register" class="btn primary auth-submit-btn">Create Account</button>
+
+        <div class="auth-footer-nav">
+          <span>Already registered?</span>
+          <button type="button" id="link-to-login" class="auth-link-highlight">Back to Login</button>
+        </div>
+      </div>
+
+      <!-- VIEW 3: FORGOT PASSWORD -->
+      <div id="auth-view-forgot" class="auth-form-view hidden">
+        <h2 class="auth-view-title">Forgot Password</h2>
+        <p class="auth-view-desc">Enter your email to receive recovery instructions</p>
+
+        <div class="auth-field">
+          <label for="auth-forgot-email">Account Email</label>
+          <input id="auth-forgot-email" type="email" placeholder="name@example.com" autocomplete="email" required />
+        </div>
+
+        <button id="btn-auth-forgot" class="btn primary auth-submit-btn">Send Reset Instructions</button>
+
+        <div class="auth-footer-nav" style="flex-direction: column; gap: 8px;">
+          <button type="button" id="link-to-reset" class="auth-link-subtle">Already have a reset token?</button>
+          <button type="button" id="link-forgot-to-login" class="auth-link-highlight">Back to Login</button>
+        </div>
+      </div>
+
+      <!-- VIEW 4: RESET PASSWORD -->
+      <div id="auth-view-reset" class="auth-form-view hidden">
+        <h2 class="auth-view-title">Reset Password</h2>
+        <p class="auth-view-desc">Enter your reset code and specify a new secure password</p>
+
+        <div class="auth-field">
+          <label for="auth-reset-token">Reset Code or Token</label>
+          <input id="auth-reset-token" type="text" placeholder="e.g. 123456 or token" required />
+        </div>
+
+        <div class="auth-field">
+          <label for="auth-reset-pass">New Password</label>
+          <input id="auth-reset-pass" type="password" placeholder="At least 6 characters" required />
+        </div>
+
+        <div class="auth-field">
+          <label for="auth-reset-pass-confirm">Confirm New Password</label>
+          <input id="auth-reset-pass-confirm" type="password" placeholder="Re-enter password" required />
+        </div>
+
+        <button id="btn-auth-reset" class="btn primary auth-submit-btn">Update Password</button>
+
+        <div class="auth-footer-nav">
+          <button type="button" id="link-reset-to-login" class="auth-link-highlight">Back to Login</button>
+        </div>
+      </div>
+
+      <!-- VIEW 5: VERIFY EMAIL -->
+      <div id="auth-view-verify" class="auth-form-view hidden">
+        <h2 class="auth-view-title">Email Verification</h2>
+        <p class="auth-view-desc">Enter the verification code sent to <span id="auth-verify-email-display" class="font-bold text-accent">your email</span></p>
+
+        <div class="auth-field">
+          <label for="auth-verify-code">6-Digit Code</label>
+          <input id="auth-verify-code" type="text" placeholder="123456" maxlength="8" style="text-align: center; letter-spacing: 0.3em; font-size: 18px;" required />
+        </div>
+
+        <button id="btn-auth-verify" class="btn primary auth-submit-btn">Verify Account</button>
+
+        <div class="auth-footer-nav">
+          <button type="button" id="link-verify-to-login" class="auth-link-highlight">Back to Login</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
   <div id="app">
     <!-- Top HUD App Bar -->
     <header class="top-bar">
@@ -80,16 +233,32 @@
             <canvas id="hud-visualizer"></canvas>
           </div>
 
-          <!-- Voice Interaction Bar -->
+          <!-- Voice Interaction Control Suite with Start Mic and Stop Mic -->
           <div class="voice-control-bar">
-            <button id="btn-mic-main" class="btn-mic-main" aria-label="Voice Interaction">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                <line x1="12" y1="19" x2="12" y2="22"></line>
-              </svg>
-            </button>
-            <div id="voice-status-text" class="voice-status-text">Tap microphone to speak</div>
+            <div class="voice-action-cluster">
+              <button id="btn-mic-start" class="btn-voice-pill start" aria-label="Start Voice Listening">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                <span>Start Mic</span>
+              </button>
+
+              <button id="btn-mic-main" class="btn-mic-main" aria-label="Voice Interaction" title="Tap to speak or interrupt">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                  <line x1="12" y1="19" x2="12" y2="22"></line>
+                </svg>
+              </button>
+
+              <button id="btn-mic-stop" class="btn-voice-pill stop" aria-label="Stop Voice Listening">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="5" y="5" width="14" height="14" rx="2"></rect>
+                </svg>
+                <span>Stop Mic</span>
+              </button>
+            </div>
+            <div id="voice-status-text" class="voice-status-text">Ready · Tap Start Mic for continuous hands-free dialogue</div>
             <div id="voice-transcript" class="voice-transcript-preview hidden"></div>
           </div>
 
@@ -298,6 +467,7 @@
         <button class="settings-nav-btn active" data-spanel="ai">AI</button>
         <button class="settings-nav-btn" data-spanel="voice">Voice</button>
         <button class="settings-nav-btn" data-spanel="services">Connected Services</button>
+        <button class="settings-nav-btn" data-spanel="account">Account</button>
         <button class="settings-nav-btn" data-spanel="device">Device</button>
         <button class="settings-nav-btn" data-spanel="appearance">Appearance</button>
         <button class="settings-nav-btn" data-spanel="privacy">Privacy</button>
@@ -353,18 +523,18 @@
       <div id="spanel-services" class="settings-panel hidden">
         <div class="settings-row-item">
           <div class="settings-row-info">
-            <div class="settings-row-title">Google Calendar</div>
-            <div class="settings-row-sub">Sync schedules and meetings</div>
+            <div class="settings-row-title">Gmail Integration</div>
+            <div class="settings-row-sub" id="settings-gmail-status-sub">Read, search, draft and reply via Google OAuth</div>
           </div>
-          <span class="assistant-status-badge unintegrated">Requires Backend OAuth</span>
+          <button id="btn-open-gmail-service" class="btn primary">Open Gmail</button>
         </div>
 
         <div class="settings-row-item">
           <div class="settings-row-info">
-            <div class="settings-row-title">Gmail Integration</div>
-            <div class="settings-row-sub">Draft and summarize user emails</div>
+            <div class="settings-row-title">Google Calendar</div>
+            <div class="settings-row-sub" id="settings-cal-status-sub">Schedule events and view upcoming meetings</div>
           </div>
-          <span class="assistant-status-badge unintegrated">Requires Backend OAuth</span>
+          <button id="btn-open-cal-service" class="btn primary">Open Calendar</button>
         </div>
 
         <div class="settings-row-item">
@@ -375,6 +545,28 @@
           <button id="btn-test-location" class="btn">Test Location</button>
         </div>
         <div id="location-test-result" class="test-result"></div>
+      </div>
+
+      <!-- Panel: User Account & Authentication -->
+      <div id="spanel-account" class="settings-panel hidden">
+        <div class="settings-group">
+          <label>Authenticated Profile</label>
+          <div class="assistant-card">
+            <div>
+              <div id="settings-user-name" style="font-weight: 700; color: var(--text);">Signed In User</div>
+              <div id="settings-user-email" style="font-size: 13px; color: var(--text-dim);">user@example.com</div>
+            </div>
+            <div class="assistant-status-badge active">ACTIVE SESSION</div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <label>Session Security</label>
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
+            Signing out terminates your authenticated session on this device and locks JARVIS access until re-authentication.
+          </p>
+          <button id="btn-auth-logout" class="btn danger" style="width: 100%;">Sign Out of JARVIS</button>
+        </div>
       </div>
 
       <!-- Panel 4: Device Permissions -->
@@ -723,6 +915,192 @@
       <div id="history-list" class="messages" style="max-height: 50vh;"></div>
     </div>
   </section>
+
+  <!-- ================= DEDICATED GMAIL ASSISTANT MODAL ================= -->
+  <section id="modal-gmail" class="sheet hidden">
+    <div class="sheet-inner gmail-sheet-inner">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header-row">
+        <div class="header-title-cluster">
+          <h2>✉️ Gmail Assistant</h2>
+          <span id="gmail-status-badge" class="status-badge offline">Checking...</span>
+        </div>
+        <div class="sheet-action-btns">
+          <button id="btn-gmail-connect" class="btn" style="font-size: 11px; padding: 4px 10px;">Connect Google</button>
+          <button id="btn-gmail-compose" class="btn primary" style="font-size: 11px; padding: 4px 10px;">✍️ Compose</button>
+          <button id="btn-gmail-refresh" class="btn" title="Refresh mailbox" style="padding: 4px 8px;">🔄</button>
+          <button id="btn-close-gmail" class="btn-close-sheet" aria-label="Close Gmail">✕</button>
+        </div>
+      </div>
+
+      <!-- Mailbox Navigation Folders -->
+      <div class="gmail-folder-bar">
+        <button class="gmail-folder-tab active" data-folder="INBOX">Inbox</button>
+        <button class="gmail-folder-tab" data-folder="STARRED">Starred</button>
+        <button class="gmail-folder-tab" data-folder="SENT">Sent</button>
+        <button class="gmail-folder-tab" data-folder="DRAFTS">Drafts</button>
+        <button class="gmail-folder-tab" data-folder="IMPORTANT">Important</button>
+        <button class="gmail-folder-tab" data-folder="SPAM">Spam</button>
+        <button class="gmail-folder-tab" data-folder="TRASH">Trash</button>
+      </div>
+
+      <!-- Search bar -->
+      <div class="gmail-search-bar">
+        <input id="gmail-search-input" type="search" placeholder="Search emails or sender..." />
+        <button id="btn-gmail-search" class="btn">Search</button>
+      </div>
+
+      <!-- Messages List Container -->
+      <div id="gmail-messages-list" class="gmail-messages-list"></div>
+
+      <!-- Pagination -->
+      <div id="gmail-pagination-bar" class="gmail-pagination-bar hidden">
+        <button id="btn-gmail-prev" class="btn">◀ Prev</button>
+        <span id="gmail-page-label" class="gmail-page-label">Page 1</span>
+        <button id="btn-gmail-next" class="btn">Next ▶</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= GMAIL DETAIL MODAL ================= -->
+  <section id="modal-gmail-detail" class="sheet hidden" style="z-index: 70;">
+    <div class="sheet-inner">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header-row">
+        <h2>Email Transmission</h2>
+        <button id="btn-close-gmail-detail" class="btn-close-sheet">✕</button>
+      </div>
+
+      <div class="gmail-detail-meta">
+        <div><b>From:</b> <span id="gmail-detail-sender"></span></div>
+        <div><b>To:</b> <span id="gmail-detail-to"></span></div>
+        <div style="font-size: 12px; color: var(--text-dim);"><b>Date:</b> <span id="gmail-detail-date"></span></div>
+        <div id="gmail-detail-subject" class="gmail-detail-subject"></div>
+      </div>
+
+      <div class="gmail-detail-toolbar">
+        <button id="btn-gmail-reply-detail" class="btn primary">↩️ Reply</button>
+        <button id="btn-gmail-forward-detail" class="btn">↪️ Forward</button>
+        <button id="btn-gmail-star-detail" class="btn">☆ Star</button>
+        <button id="btn-gmail-trash-detail" class="btn danger">🗑️ Trash</button>
+      </div>
+
+      <div id="gmail-detail-body" class="gmail-detail-body"></div>
+    </div>
+  </section>
+
+  <!-- ================= GMAIL COMPOSE MODAL ================= -->
+  <section id="modal-gmail-compose" class="sheet hidden" style="z-index: 80;">
+    <div class="sheet-inner">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header-row">
+        <h2 id="gmail-compose-title">New Email Transmission</h2>
+        <button id="btn-close-gmail-compose" class="btn-close-sheet">✕</button>
+      </div>
+
+      <div class="settings-group">
+        <label for="gmail-compose-to">Recipient To</label>
+        <input id="gmail-compose-to" type="email" placeholder="recipient@example.com" />
+      </div>
+
+      <div class="settings-group">
+        <label for="gmail-compose-subject">Subject</label>
+        <input id="gmail-compose-subject" type="text" placeholder="Project Update / Inquiry" />
+      </div>
+
+      <div class="settings-group">
+        <label for="gmail-compose-body">Message Body</label>
+        <textarea id="gmail-compose-body" rows="7" placeholder="Type your message or draft with JARVIS..."></textarea>
+      </div>
+
+      <div class="row">
+        <button id="btn-gmail-save-draft" class="btn">Save Draft</button>
+        <button id="btn-gmail-send-compose" class="btn primary">Send Message</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= GMAIL CONFIRM SEND DIALOG ================= -->
+  <div id="modal-gmail-confirm" class="confirm-modal-overlay hidden" style="z-index: 90;">
+    <div class="confirm-dialog-card">
+      <div class="confirm-dialog-title">⚠️ Confirm Email Transmission</div>
+      <p class="confirm-dialog-desc">You are about to transmit the following email message via Gmail:</p>
+      <div id="gmail-confirm-summary" class="confirm-dialog-summary"></div>
+      <div class="row" style="margin-top: 14px;">
+        <button id="btn-gmail-cancel-send" class="btn" style="flex: 1;">Cancel</button>
+        <button id="btn-gmail-confirm-send" class="btn primary" style="flex: 1;">Confirm & Transmit</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= DEDICATED GOOGLE CALENDAR MODAL ================= -->
+  <section id="modal-calendar" class="sheet hidden">
+    <div class="sheet-inner">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header-row">
+        <h2>📅 Google Calendar Assistant</h2>
+        <div class="sheet-action-btns">
+          <button id="btn-calendar-open-create" class="btn primary" style="font-size: 11px; padding: 4px 10px;">+ New Event</button>
+          <button id="btn-calendar-refresh" class="btn" style="padding: 4px 8px;">🔄</button>
+          <button id="btn-close-calendar" class="btn-close-sheet">✕</button>
+        </div>
+      </div>
+
+      <div id="calendar-events-list" class="calendar-events-list"></div>
+    </div>
+  </section>
+
+  <!-- ================= CALENDAR CREATE EVENT MODAL ================= -->
+  <section id="modal-calendar-create" class="sheet hidden" style="z-index: 70;">
+    <div class="sheet-inner">
+      <div class="sheet-drag-handle"></div>
+      <div class="sheet-header-row">
+        <h2>Schedule New Event</h2>
+        <button id="btn-close-calendar-create" class="btn-close-sheet">✕</button>
+      </div>
+
+      <div class="settings-group">
+        <label for="calendar-new-title">Event Title</label>
+        <input id="calendar-new-title" type="text" placeholder="e.g. Executive Strategy Review" />
+      </div>
+
+      <div class="row">
+        <div class="settings-group" style="flex: 1;">
+          <label for="calendar-new-start">Start Time</label>
+          <input id="calendar-new-start" type="datetime-local" />
+        </div>
+        <div class="settings-group" style="flex: 1;">
+          <label for="calendar-new-end">End Time</label>
+          <input id="calendar-new-end" type="datetime-local" />
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <label for="calendar-new-location">Location / Room (Optional)</label>
+        <input id="calendar-new-location" type="text" placeholder="Conference Room A / Google Meet" />
+      </div>
+
+      <div class="settings-group">
+        <label for="calendar-new-desc">Agenda & Description</label>
+        <textarea id="calendar-new-desc" rows="3" placeholder="Key meeting topics and action items..."></textarea>
+      </div>
+
+      <button id="btn-calendar-submit-create" class="btn primary" style="width: 100%;">Schedule Event</button>
+    </div>
+  </section>
+
+  <!-- ================= CALENDAR CONFIRM DELETE DIALOG ================= -->
+  <div id="modal-calendar-confirm-delete" class="confirm-modal-overlay hidden" style="z-index: 90;">
+    <div class="confirm-dialog-card">
+      <div class="confirm-dialog-title">🗑️ Delete Calendar Event</div>
+      <p class="confirm-dialog-desc">Are you sure you want to permanently remove this event from your calendar?</p>
+      <div id="calendar-delete-event-title" class="confirm-dialog-summary" style="font-weight: 700; color: var(--text);"></div>
+      <div class="row" style="margin-top: 14px;">
+        <button id="btn-calendar-cancel-delete" class="btn" style="flex: 1;">Cancel</button>
+        <button id="btn-calendar-confirm-delete" class="btn danger" style="flex: 1;">Confirm Delete</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Zoom & Toast -->
   <div id="zoom" class="zoom hidden"><img alt="Zoom preview" /></div>

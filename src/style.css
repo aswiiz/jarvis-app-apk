@@ -1878,7 +1878,7 @@ input:checked + .slider:before {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  transition: opacity 0.45s ease, transform 0.45s ease;
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
 .intro-overlay.intro-dissolve {
@@ -1897,7 +1897,7 @@ input:checked + .slider:before {
   background: linear-gradient(90deg, transparent, var(--accent), #fff, var(--accent), transparent);
   box-shadow: 0 0 18px var(--accent), 0 0 36px var(--accent);
   opacity: 0.9;
-  animation: scanline-sweep 2.2s infinite ease-in-out;
+  animation: scanline-sweep 1.1s infinite ease-in-out;
 }
 
 @keyframes scanline-sweep {
@@ -1911,7 +1911,7 @@ input:checked + .slider:before {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
+  gap: 16px;
   text-align: center;
   max-width: 400px;
 }
@@ -1919,12 +1919,12 @@ input:checked + .slider:before {
 /* Assembling Concentric Calibration Rings */
 .intro-rings-assembly {
   position: relative;
-  width: 160px;
-  height: 160px;
+  width: 150px;
+  height: 150px;
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: rings-assemble 0.8s var(--ease-spring) both;
+  animation: rings-assemble 0.4s var(--ease-spring) both;
 }
 
 @keyframes rings-assemble {
@@ -1942,21 +1942,21 @@ input:checked + .slider:before {
 .intro-ring.ring-1 {
   inset: 0;
   border-style: dashed;
-  animation: spin-cw 6s linear infinite;
+  animation: spin-cw 3s linear infinite;
 }
 
 .intro-ring.ring-2 {
-  inset: 16px;
+  inset: 14px;
   border-width: 1.5px;
   border-color: var(--accent-blue);
-  animation: spin-ccw 4s linear infinite;
+  animation: spin-ccw 2s linear infinite;
 }
 
 .intro-ring.ring-3 {
-  inset: 32px;
+  inset: 28px;
   border-style: dotted;
   border-width: 2px;
-  animation: spin-cw 3s linear infinite;
+  animation: spin-cw 1.5s linear infinite;
 }
 
 .intro-center-core {
@@ -2079,6 +2079,624 @@ input:checked + .slider:before {
 @keyframes pop-in {
   from { opacity: 0; transform: scale(0.9); }
   to { opacity: 1; transform: scale(1); }
+}
+
+/* ================= USER AUTHENTICATION OVERLAY ================= */
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  background: rgba(7, 9, 14, 0.95);
+  background-image: radial-gradient(circle at 50% 20%, rgba(13, 23, 46, 0.9) 0%, rgba(7, 9, 14, 0.98) 75%);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  transition: opacity 0.35s var(--ease-smooth), visibility 0.35s;
+}
+
+.auth-overlay.fade-out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--surface-glass);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 28px 24px;
+  box-shadow: 0 0 45px rgba(0, 240, 255, 0.12), 0 20px 40px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  animation: pop-in 0.4s var(--ease-spring);
+}
+
+.auth-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.auth-emblem-wrap {
+  display: inline-block;
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.auth-emblem {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 22px var(--accent-glow-strong);
+  object-fit: cover;
+}
+
+.auth-title {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--text);
+  line-height: 1.1;
+  text-shadow: 0 0 16px var(--accent-glow);
+}
+
+.auth-subtitle {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.auth-error-banner {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  text-align: center;
+  animation: fade-in 0.2s ease;
+}
+
+.auth-form-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-view-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.auth-view-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auth-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.auth-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.auth-field input {
+  width: 100%;
+  padding: 12px 14px;
+  background: rgba(16, 23, 40, 0.6);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  transition: all var(--trans-fast);
+}
+
+.auth-field input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
+  background: rgba(16, 23, 40, 0.85);
+}
+
+.auth-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.auth-input-wrapper input {
+  padding-right: 42px;
+}
+
+.btn-input-icon {
+  position: absolute;
+  right: 10px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  opacity: 0.7;
+  transition: opacity var(--trans-fast);
+}
+
+.btn-input-icon:hover {
+  opacity: 1;
+}
+
+.auth-checkbox-row {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.auth-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.auth-checkbox-label input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+}
+
+.auth-submit-btn {
+  width: 100%;
+  padding: 13px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin-top: 6px;
+}
+
+.auth-footer-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+.auth-link-highlight {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-size: 13px;
+}
+
+.auth-link-subtle {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* ================= VOICE CONTROL SUITE (START / STOP MIC) ================= */
+.voice-action-cluster {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 4px;
+}
+
+.btn-voice-pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all var(--trans-normal);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-card);
+  color: var(--text);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+.btn-voice-pill.start {
+  border-color: rgba(0, 240, 255, 0.4);
+  color: var(--accent);
+}
+
+.btn-voice-pill.start:hover {
+  background: rgba(0, 240, 255, 0.12);
+  box-shadow: 0 0 18px var(--accent-glow);
+  transform: translateY(-2px);
+}
+
+.btn-voice-pill.stop {
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+.btn-voice-pill.stop:hover {
+  background: rgba(239, 68, 68, 0.15);
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.4);
+  transform: translateY(-2px);
+}
+
+.btn-voice-pill:active {
+  transform: scale(0.95);
+}
+
+.btn-mic-main.listening {
+  background: rgba(0, 240, 255, 0.25);
+  border-color: var(--accent);
+  box-shadow: 0 0 30px var(--accent-glow-strong);
+  animation: pulse-ring 1.5s infinite;
+}
+
+/* ================= GMAIL ASSISTANT STYLING ================= */
+.header-title-cluster {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.status-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  letter-spacing: 0.04em;
+}
+
+.status-badge.online {
+  background: rgba(16, 185, 129, 0.18);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #6ee7b7;
+}
+
+.status-badge.offline {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+.gmail-folder-bar {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 0 10px;
+  scrollbar-width: none;
+}
+.gmail-folder-bar::-webkit-scrollbar { display: none; }
+
+.gmail-folder-tab {
+  background: rgba(16, 23, 40, 0.6);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--trans-fast);
+}
+
+.gmail-folder-tab.active {
+  background: rgba(0, 240, 255, 0.15);
+  border-color: var(--accent);
+  color: var(--text);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.gmail-search-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.gmail-search-bar input {
+  flex: 1;
+  background: rgba(16, 23, 40, 0.6);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 8px 14px;
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+.gmail-search-bar input:focus {
+  border-color: var(--accent);
+}
+
+.gmail-messages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 52vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.gmail-msg-item {
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: all var(--trans-fast);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.gmail-msg-item:hover {
+  background: var(--surface-card-hover);
+  border-color: var(--border);
+  transform: translateX(2px);
+}
+
+.gmail-msg-item.unread {
+  border-left: 3px solid var(--accent);
+  background: rgba(16, 23, 40, 0.85);
+}
+
+.gmail-msg-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.btn-star-inline {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.btn-star-inline.starred {
+  color: #fbbf24;
+}
+
+.gmail-sender {
+  flex: 1;
+  color: var(--text);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gmail-date {
+  font-size: 11px;
+}
+
+.gmail-subject {
+  font-size: 14px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gmail-snippet {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gmail-pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 4px 0;
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 8px;
+}
+
+.gmail-page-label {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.gmail-detail-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 12px;
+}
+
+.gmail-detail-subject {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin-top: 4px;
+}
+
+.gmail-detail-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.gmail-detail-body {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+  max-height: 48vh;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ================= CALENDAR ASSISTANT STYLING ================= */
+.calendar-events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 55vh;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+
+.calendar-event-card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: all var(--trans-fast);
+}
+
+.calendar-event-card:hover {
+  background: var(--surface-card-hover);
+  border-color: var(--border);
+}
+
+.cal-event-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.cal-date-badge {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.cal-time-badge {
+  color: var(--text-dim);
+}
+
+.cal-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cal-location {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.cal-desc {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.cal-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.cal-btn-del {
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--trans-fast);
+}
+
+.cal-btn-del:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+/* ================= CONFIRMATION MODAL OVERLAYS ================= */
+.confirm-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.confirm-dialog-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 22px;
+  box-shadow: 0 0 35px rgba(0, 0, 0, 0.8);
+  animation: pop-in 0.25s var(--ease-spring);
+}
+
+.confirm-dialog-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.confirm-dialog-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.confirm-dialog-summary {
+  background: rgba(16, 23, 40, 0.6);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--text);
 }
 
 /* ---------------- Reduced Motion Overrides ---------------- */

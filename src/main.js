@@ -21,11 +21,18 @@ import {
   clearAllLocalData,
 } from './storage.js';
 
+import { AuthManager } from './auth.js';
+import { GmailAssistant } from './gmail.js';
+import { CalendarAssistant } from './calendar.js';
+
 // DOM Selector Helper
 const $ = (id) => document.getElementById(id);
 
 // App State
 const client = new Client();
+let authManager = null;
+let gmailAssistant = null;
+let calendarAssistant = null;
 let visualizer = null;
 let bgParticles = null;
 let activeTab = 'home';
@@ -35,6 +42,8 @@ let cache = []; // [{ role, content, tasks?, attachments? }]
 let pending = []; // [{ name, mime, data, preview }]
 let busy = false;
 let isListening = false;
+let isContinuousSession = false;
+let restartVoiceTimeout = null;
 
 // Automation Timers & Stopwatch State
 let timerInterval = null;
@@ -147,15 +156,19 @@ function updateTimeAndGreeting() {
 setInterval(updateTimeAndGreeting, 1000);
 updateTimeAndGreeting();
 
-// ----------------- Voice Interaction Engine -----------------
+// ----------------- Continuous Voice Interaction Engine -----------------
 function setVoiceUIState(state) {
   const btn = $('btn-mic-main');
+  const btnStart = $('btn-mic-start');
+  const btnStop = $('btn-mic-stop');
   const status = $('voice-status-text');
   const preview = $('voice-transcript');
 
   if (state === 'LISTENING') {
     if (btn) btn.className = 'btn-mic-main listening';
-    if (status) status.textContent = 'Listening to your voice...';
+    if (btnStart) btnStart.classList.add('active');
+    if (btnStop) btnStop.classList.remove('active');
+    if (status) status.textContent = isContinuousSession ? 'Continuous Session Active · Listening...' : 'Listening to your voice...';
     if (preview) {
       preview.textContent = 'Speak now...';
       preview.classList.remove('hidden');
@@ -167,11 +180,13 @@ function setVoiceUIState(state) {
     if (visualizer) visualizer.setState('THINKING');
   } else if (state === 'SPEAKING') {
     if (btn) btn.className = 'btn-mic-main speaking';
-    if (status) status.textContent = 'JARVIS Speaking (Tap to interrupt)';
+    if (status) status.textContent = 'JARVIS Speaking (Tap Stop Mic to halt)';
     if (visualizer) visualizer.setState('SPEAKING');
   } else {
     if (btn) btn.className = 'btn-mic-main';
-    if (status) status.textContent = 'Tap microphone to speak';
+    if (btnStart) btnStart.classList.remove('active');
+    if (btnStop) btnStop.classList.remove('active');
+    if (status) status.textContent = 'Ready · Tap Start Mic for continuous hands-free dialogue';
     if (preview) preview.classList.add('hidden');
     if (visualizer) visualizer.setState('IDLE');
   }
@@ -179,27 +194,48 @@ function setVoiceUIState(state) {
 
 let voiceLock = false;
 
-async function handleVoiceInteraction() {
+async function startContinuousVoiceSession() {
   if (voiceLock) return;
   voiceLock = true;
   setTimeout(() => { voiceLock = false; }, 400);
 
   if (audio.isSpeaking()) {
     audio.stopSpeaking();
-    setVoiceUIState('IDLE');
-    return;
   }
 
+  isContinuousSession = true;
+  clearTimeout(restartVoiceTimeout);
+  await runVoiceRecognitionTurn();
+}
+
+async function stopContinuousVoiceSession() {
+  isContinuousSession = false;
+  clearTimeout(restartVoiceTimeout);
   if (isListening) {
     await audio.stopRecognition();
     isListening = false;
-    setVoiceUIState('IDLE');
-    return;
   }
+  if (audio.isSpeaking()) {
+    audio.stopSpeaking();
+  }
+  setVoiceUIState('IDLE');
+  toast('Voice assistant session stopped.', 'info', 2000);
+}
 
+async function handleVoiceInteraction() {
+  if (isContinuousSession || isListening || audio.isSpeaking()) {
+    await stopContinuousVoiceSession();
+  } else {
+    await startContinuousVoiceSession();
+  }
+}
+
+async function runVoiceRecognitionTurn() {
   if (!audio.recSupported) {
     toast('Speech recognition not supported on this device. You can type in Chat.', 'info');
     switchTab('chat');
+    isContinuousSession = false;
+    setVoiceUIState('IDLE');
     return;
   }
 
@@ -220,27 +256,35 @@ async function handleVoiceInteraction() {
     },
     onError: (err) => {
       isListening = false;
-      setVoiceUIState('IDLE');
       const errInfo = formatVoiceError(err);
-      if (errInfo.userMessage) {
-        toast(errInfo.userMessage, 'error', 6000);
-      }
-      if (errInfo.suggestChat) {
-        setTimeout(() => {
-          if (activeTab === 'home') {
-            toast('Opening Chat — you can type your message directly.', 'info', 3500);
-            switchTab('chat');
-            const inp = $('input');
-            if (inp) inp.focus();
+      if (errInfo.type === 'no_speech' && isContinuousSession) {
+        // Continuous session: ignore brief silence timeout, restart listening after pause
+        restartVoiceTimeout = setTimeout(() => {
+          if (isContinuousSession && !isListening && !audio.isSpeaking()) {
+            runVoiceRecognitionTurn();
           }
-        }, 1800);
+        }, 500);
+        return;
       }
+      setVoiceUIState('IDLE');
+      if (errInfo.userMessage) {
+        toast(errInfo.userMessage, 'error', 5000);
+      }
+      isContinuousSession = false;
     },
     onEnd: async (finalText) => {
       isListening = false;
       const cleanText = (finalText || '').trim();
       if (!cleanText) {
-        setVoiceUIState('IDLE');
+        if (isContinuousSession) {
+          restartVoiceTimeout = setTimeout(() => {
+            if (isContinuousSession && !isListening && !audio.isSpeaking()) {
+              runVoiceRecognitionTurn();
+            }
+          }, 600);
+        } else {
+          setVoiceUIState('IDLE');
+        }
         return;
       }
 
@@ -249,6 +293,12 @@ async function handleVoiceInteraction() {
     },
   });
 }
+
+const btnMicStart = $('btn-mic-start');
+if (btnMicStart) btnMicStart.onclick = startContinuousVoiceSession;
+
+const btnMicStop = $('btn-mic-stop');
+if (btnMicStop) btnMicStop.onclick = stopContinuousVoiceSession;
 
 $('btn-mic-main').onclick = handleVoiceInteraction;
 $('visualizer-card').onclick = handleVoiceInteraction;
@@ -281,15 +331,17 @@ async function executeUserQuery(text, speakResponse = false) {
 
   if (visualizer) visualizer.setState('THINKING');
 
+  let slowTimer = null;
   try {
-    const awake = await client.ensureAwake(() => banner('Waking up server... (cold start may take 30s)'));
-    banner('');
-    if (!awake) {
-      throw new Error('Unable to connect to any backend. Check settings or connection.');
-    }
-    setConnectionState('ok', 'CONNECTED');
+    // Show polite warning banner only if both backends take longer than 3.5s (e.g. Render cold start)
+    slowTimer = setTimeout(() => {
+      if (busy) banner('Connecting to neural core... (cold start may take a few seconds)');
+    }, 3500);
 
     const data = await client.chat(text, sessionId, files);
+    clearTimeout(slowTimer);
+    banner('');
+    setConnectionState('ok', 'CONNECTED');
     const replyText = data.response || '(No text response)';
 
     cache.push({
@@ -307,13 +359,56 @@ async function executeUserQuery(text, speakResponse = false) {
         voiceName: appSettings.voiceName,
         rate: appSettings.voiceSpeed,
         pitch: appSettings.voicePitch,
-        onEnd: () => setVoiceUIState('IDLE'),
-        onError: () => setVoiceUIState('IDLE'),
+        onEnd: () => {
+          if (isContinuousSession) {
+            setTimeout(() => {
+              if (isContinuousSession && !isListening) {
+                runVoiceRecognitionTurn();
+              }
+            }, 300);
+          } else {
+            setVoiceUIState('IDLE');
+          }
+        },
+        onError: () => {
+          if (isContinuousSession) {
+            setTimeout(() => {
+              if (isContinuousSession && !isListening) {
+                runVoiceRecognitionTurn();
+              }
+            }, 300);
+          } else {
+            setVoiceUIState('IDLE');
+          }
+        },
       });
     } else {
-      setVoiceUIState('IDLE');
+      if (isContinuousSession) {
+        setTimeout(() => {
+          if (isContinuousSession && !isListening) {
+            runVoiceRecognitionTurn();
+          }
+        }, 300);
+      } else {
+        setVoiceUIState('IDLE');
+      }
     }
   } catch (err) {
+    if (slowTimer) clearTimeout(slowTimer);
+    banner('');
+    setConnectionState('bad', 'DISCONNECTED');
+    if (visualizer) visualizer.setState('ERROR');
+    toast(err.message || 'Request failed.', 'error');
+    cache.push({
+      role: 'assistant',
+      content: '⚠️ ' + (err.message || 'Request failed.'),
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    });
+    setTimeout(() => {
+      if (visualizer && visualizer.state === 'ERROR') visualizer.setState('IDLE');
+    }, 4000);
+    isContinuousSession = false;
+    if (slowTimer) clearTimeout(slowTimer);
     banner('');
     setConnectionState('bad', 'DISCONNECTED');
     if (visualizer) visualizer.setState('ERROR');
@@ -1432,13 +1527,12 @@ function playCinematicIntro(force = false) {
   const telemetry = $('intro-telemetry');
   if (fill) fill.style.width = '0%';
 
-  audio.playChime('startup');
-
+  // Fast high-tech sequence: total ~950ms
   const steps = [
-    { t: 0, msg: 'INITIALIZING NEURAL CORE // STANDBY...', pct: '15%' },
-    { t: 550, msg: 'CALIBRATING HOLOGRAPHIC GYROSCOPES...', pct: '48%' },
-    { t: 1100, msg: 'LINKING AUDIO SPECTRUM & SENSORS...', pct: '82%' },
-    { t: 1650, msg: 'SYSTEM NOMINAL // ALL SYSTEMS GO', pct: '100%' },
+    { t: 0, msg: 'INITIALIZING NEURAL CORE // STANDBY...', pct: '25%' },
+    { t: 200, msg: 'CALIBRATING HOLOGRAPHIC GYROSCOPES...', pct: '60%' },
+    { t: 450, msg: 'LINKING AUDIO SPECTRUM & SENSORS...', pct: '88%' },
+    { t: 700, msg: 'SYSTEM NOMINAL // ALL SYSTEMS GO', pct: '100%' },
   ];
 
   steps.forEach(({ t, msg, pct }) => {
@@ -1453,7 +1547,7 @@ function playCinematicIntro(force = false) {
     overlay.classList.add('intro-dissolve');
     setTimeout(() => {
       overlay.classList.add('hidden');
-    }, 450);
+    }, 200);
     sessionStorage.setItem('jarvis_intro_played', 'true');
 
     // Trigger staggered animation on dashboard action cards
@@ -1464,7 +1558,7 @@ function playCinematicIntro(force = false) {
     });
   };
 
-  introTimeout = setTimeout(dismissIntro, 2300);
+  introTimeout = setTimeout(dismissIntro, 950);
 
   const skipBtn = $('intro-skip-btn');
   if (skipBtn) {

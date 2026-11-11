@@ -28,7 +28,7 @@ export async function removePref(key) {
 
 // ----------------- App Settings -----------------
 export const DEFAULT_SETTINGS = {
-  voiceSpeed: 1.0,
+  voiceSpeed: 1.15,
   voicePitch: 1.0,
   voiceName: '',
   autoSpeak: true,

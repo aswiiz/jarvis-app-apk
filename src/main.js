@@ -41,9 +41,42 @@ let sessionId = '';
 let cache = []; // [{ role, content, tasks?, attachments? }]
 let pending = []; // [{ name, mime, data, preview }]
 let busy = false;
+
+// Global isListening boolean flag for speech recognition session
 let isListening = false;
-let isContinuousSession = false;
+let isContinuousSession = false; // Kept in sync with isListening for complete backward compatibility
+
+// State-Based Lock for SpeechRecognition
+const RecognitionState = {
+  IDLE: 'IDLE',
+  STARTING: 'STARTING',
+  LISTENING: 'LISTENING',
+  PROCESSING: 'PROCESSING',
+  STOPPING: 'STOPPING',
+};
+let recognitionState = RecognitionState.IDLE;
+let recognitionInstance = null; // Active recognition instance tracking
 let restartVoiceTimeout = null;
+
+function setListeningState(active) {
+  isListening = !!active;
+  isContinuousSession = isListening;
+}
+
+async function stopAndNullRecognition() {
+  if (recognitionInstance) {
+    try {
+      if (typeof recognitionInstance.stop === 'function') {
+        recognitionInstance.stop();
+      }
+    } catch {
+      // ignore
+    }
+    recognitionInstance = null;
+  }
+  await audio.stopRecognition();
+  recognitionInstance = null;
+}
 
 // Automation Timers & Stopwatch State
 let timerInterval = null;
@@ -168,7 +201,7 @@ function setVoiceUIState(state) {
     if (btn) btn.className = 'btn-mic-main listening';
     if (btnStart) btnStart.classList.add('active');
     if (btnStop) btnStop.classList.remove('active');
-    if (status) status.textContent = isContinuousSession ? 'Continuous Session Active · Listening...' : 'Listening to your voice...';
+    if (status) status.textContent = isListening ? 'Continuous Session Active · Listening...' : 'Listening to your voice...';
     if (preview) {
       preview.textContent = 'Speak now...';
       preview.classList.remove('hidden');
@@ -192,106 +225,181 @@ function setVoiceUIState(state) {
   }
 }
 
-let voiceLock = false;
-
 async function startContinuousVoiceSession() {
-  if (voiceLock) return;
-  voiceLock = true;
-  setTimeout(() => { voiceLock = false; }, 400);
+  // State-based lock: reject overlapping or re-entrant invocations
+  if (recognitionState !== RecognitionState.IDLE) {
+    return;
+  }
 
   if (audio.isSpeaking()) {
     audio.stopSpeaking();
   }
 
-  isContinuousSession = true;
+  setListeningState(true);
   clearTimeout(restartVoiceTimeout);
-  await runVoiceRecognitionTurn();
+  restartVoiceTimeout = null;
+
+  await runVoiceRecognitionTurn({ playFeedback: true });
 }
 
 async function stopContinuousVoiceSession() {
-  isContinuousSession = false;
+  recognitionState = RecognitionState.STOPPING;
+
+  // Set global isListening boolean flag to false (prevents any onend auto-restarts)
+  setListeningState(false);
   clearTimeout(restartVoiceTimeout);
-  if (isListening) {
-    await audio.stopRecognition();
-    isListening = false;
-  }
+  restartVoiceTimeout = null;
+
+  // Ensure stop() is called and recognition instance is explicitly set to null
+  await stopAndNullRecognition();
+
   if (audio.isSpeaking()) {
     audio.stopSpeaking();
   }
+
+  recognitionState = RecognitionState.IDLE;
   setVoiceUIState('IDLE');
   toast('Voice assistant session stopped.', 'info', 2000);
 }
 
 async function handleVoiceInteraction() {
-  if (isContinuousSession || isListening || audio.isSpeaking()) {
+  if (isListening || recognitionState !== RecognitionState.IDLE || audio.isSpeaking()) {
     await stopContinuousVoiceSession();
   } else {
     await startContinuousVoiceSession();
   }
 }
 
-async function runVoiceRecognitionTurn() {
-  if (!audio.recSupported) {
-    toast('Speech recognition not supported on this device. You can type in Chat.', 'info');
-    switchTab('chat');
-    isContinuousSession = false;
+async function runVoiceRecognitionTurn({ playFeedback = false } = {}) {
+  // Guard 1: Verify the global isListening boolean flag is active
+  if (!isListening) {
+    recognitionState = RecognitionState.IDLE;
     setVoiceUIState('IDLE');
     return;
   }
 
-  isListening = true;
+  // Guard 2: State-based lock prevents multiple concurrent turns or auto-restart recursion loops
+  if (recognitionState !== RecognitionState.IDLE) {
+    return;
+  }
+
+  if (!audio.recSupported) {
+    toast('Speech recognition not supported on this device. You can type in Chat.', 'info');
+    switchTab('chat');
+    setListeningState(false);
+    recognitionState = RecognitionState.IDLE;
+    setVoiceUIState('IDLE');
+    return;
+  }
+
+  if (audio.isSpeaking()) {
+    return;
+  }
+
+  // Engage state-based lock: STARTING
+  recognitionState = RecognitionState.STARTING;
+
+  // Ensure stop() is called and recognition instance is set to null before start() is invoked
+  await stopAndNullRecognition();
+
+  // Re-verify global isListening boolean flag after asynchronous stop/null cleanup
+  if (!isListening) {
+    recognitionState = RecognitionState.IDLE;
+    setVoiceUIState('IDLE');
+    return;
+  }
+
   setVoiceUIState('LISTENING');
 
-  audio.startRecognition({
-    onStart: () => {
-      isListening = true;
-      setVoiceUIState('LISTENING');
-    },
-    onResult: (transcript, isFinal) => {
-      const p = $('voice-transcript');
-      if (p) {
-        p.textContent = `"${transcript}"`;
-        p.classList.remove('hidden');
-      }
-    },
-    onError: (err) => {
-      isListening = false;
-      const errInfo = formatVoiceError(err);
-      if (errInfo.type === 'no_speech' && isContinuousSession) {
-        // Continuous session: ignore brief silence timeout, restart listening after pause
-        restartVoiceTimeout = setTimeout(() => {
-          if (isContinuousSession && !isListening && !audio.isSpeaking()) {
-            runVoiceRecognitionTurn();
-          }
-        }, 500);
-        return;
-      }
-      setVoiceUIState('IDLE');
-      if (errInfo.userMessage) {
-        toast(errInfo.userMessage, 'error', 5000);
-      }
-      isContinuousSession = false;
-    },
-    onEnd: async (finalText) => {
-      isListening = false;
-      const cleanText = (finalText || '').trim();
-      if (!cleanText) {
-        if (isContinuousSession) {
-          restartVoiceTimeout = setTimeout(() => {
-            if (isContinuousSession && !isListening && !audio.isSpeaking()) {
-              runVoiceRecognitionTurn();
-            }
-          }, 600);
-        } else {
+  try {
+    await audio.startRecognition({
+      playFeedback,
+      onStart: () => {
+        if (!isListening) {
+          stopAndNullRecognition();
+          recognitionState = RecognitionState.IDLE;
           setVoiceUIState('IDLE');
+          return;
         }
-        return;
-      }
+        recognitionState = RecognitionState.LISTENING;
+        setVoiceUIState('LISTENING');
+        recognitionInstance = audio.getRecognitionInstance();
+      },
+      onResult: (transcript) => {
+        if (!isListening) return;
+        const p = $('voice-transcript');
+        if (p) {
+          p.textContent = `"${transcript}"`;
+          p.classList.remove('hidden');
+        }
+      },
+      onError: (err) => {
+        recognitionInstance = null;
+        const errInfo = formatVoiceError(err);
 
-      setVoiceUIState('THINKING');
-      await executeUserQuery(cleanText, true);
-    },
-  });
+        // onend / onError handlers only trigger a restart if global isListening flag is still active
+        if (isListening && (errInfo.type === 'no_speech' || errInfo.type === 'busy' || errInfo.type === 'cancelled')) {
+          recognitionState = RecognitionState.IDLE;
+          clearTimeout(restartVoiceTimeout);
+          restartVoiceTimeout = setTimeout(() => {
+            if (isListening && recognitionState === RecognitionState.IDLE && !audio.isSpeaking()) {
+              runVoiceRecognitionTurn({ playFeedback: false });
+            }
+          }, 400);
+          return;
+        }
+
+        setListeningState(false);
+        recognitionState = RecognitionState.IDLE;
+        setVoiceUIState('IDLE');
+        if (errInfo.userMessage) {
+          toast(errInfo.userMessage, 'error', 5000);
+        }
+      },
+      onEnd: async (finalText) => {
+        recognitionInstance = null;
+
+        // Modify onend to check a global isListening boolean flag before attempting any auto-restarts
+        if (!isListening) {
+          recognitionState = RecognitionState.IDLE;
+          setVoiceUIState('IDLE');
+          return;
+        }
+
+        const cleanText = (finalText || '').trim();
+        if (!cleanText) {
+          // Silence or empty utterance:
+          // Check global isListening boolean flag before attempting auto-restart
+          recognitionState = RecognitionState.IDLE;
+          clearTimeout(restartVoiceTimeout);
+          restartVoiceTimeout = setTimeout(() => {
+            if (isListening && recognitionState === RecognitionState.IDLE && !audio.isSpeaking()) {
+              runVoiceRecognitionTurn({ playFeedback: false });
+            }
+          }, 350);
+          return;
+        }
+
+        // Recognized speech ready for AI pipeline: engage PROCESSING lock
+        recognitionState = RecognitionState.PROCESSING;
+        setVoiceUIState('THINKING');
+        await executeUserQuery(cleanText, true);
+      },
+    });
+
+    recognitionInstance = audio.getRecognitionInstance();
+  } catch (err) {
+    recognitionInstance = null;
+    recognitionState = RecognitionState.IDLE;
+    if (isListening) {
+      clearTimeout(restartVoiceTimeout);
+      restartVoiceTimeout = setTimeout(() => {
+        if (isListening && recognitionState === RecognitionState.IDLE && !audio.isSpeaking()) {
+          runVoiceRecognitionTurn({ playFeedback: false });
+        }
+      }, 500);
+    }
+  }
 }
 
 const btnMicStart = $('btn-mic-start');
@@ -360,35 +468,41 @@ async function executeUserQuery(text, speakResponse = false) {
         rate: appSettings.voiceSpeed,
         pitch: appSettings.voicePitch,
         onEnd: () => {
-          if (isContinuousSession) {
-            setTimeout(() => {
-              if (isContinuousSession && !isListening) {
-                runVoiceRecognitionTurn();
+          recognitionState = RecognitionState.IDLE;
+          if (isContinuousListening) {
+            clearTimeout(restartVoiceTimeout);
+            restartVoiceTimeout = setTimeout(() => {
+              if (isContinuousListening && recognitionState === RecognitionState.IDLE && !audio.isSpeaking()) {
+                runVoiceRecognitionTurn({ playFeedback: false });
               }
-            }, 300);
+            }, 350);
           } else {
             setVoiceUIState('IDLE');
           }
         },
         onError: () => {
-          if (isContinuousSession) {
-            setTimeout(() => {
-              if (isContinuousSession && !isListening) {
-                runVoiceRecognitionTurn();
+          recognitionState = RecognitionState.IDLE;
+          if (isContinuousListening) {
+            clearTimeout(restartVoiceTimeout);
+            restartVoiceTimeout = setTimeout(() => {
+              if (isContinuousListening && recognitionState === RecognitionState.IDLE && !audio.isSpeaking()) {
+                runVoiceRecognitionTurn({ playFeedback: false });
               }
-            }, 300);
+            }, 350);
           } else {
             setVoiceUIState('IDLE');
           }
         },
       });
     } else {
-      if (isContinuousSession) {
-        setTimeout(() => {
-          if (isContinuousSession && !isListening) {
-            runVoiceRecognitionTurn();
+      recognitionState = RecognitionState.IDLE;
+      if (isContinuousListening) {
+        clearTimeout(restartVoiceTimeout);
+        restartVoiceTimeout = setTimeout(() => {
+          if (isContinuousListening && recognitionState === RecognitionState.IDLE && !audio.isSpeaking()) {
+            runVoiceRecognitionTurn({ playFeedback: false });
           }
-        }, 300);
+        }, 350);
       } else {
         setVoiceUIState('IDLE');
       }
@@ -407,20 +521,11 @@ async function executeUserQuery(text, speakResponse = false) {
     setTimeout(() => {
       if (visualizer && visualizer.state === 'ERROR') visualizer.setState('IDLE');
     }, 4000);
-    isContinuousSession = false;
-    if (slowTimer) clearTimeout(slowTimer);
-    banner('');
-    setConnectionState('bad', 'DISCONNECTED');
-    if (visualizer) visualizer.setState('ERROR');
-    toast(err.message || 'Request failed.', 'error');
-    cache.push({
-      role: 'assistant',
-      content: '⚠️ ' + (err.message || 'Request failed.'),
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    });
-    setTimeout(() => {
-      if (visualizer && visualizer.state === 'ERROR') visualizer.setState('IDLE');
-    }, 4000);
+    setContinuousListening(false);
+    clearTimeout(restartVoiceTimeout);
+    restartVoiceTimeout = null;
+    recognitionState = RecognitionState.IDLE;
+    setVoiceUIState('IDLE');
   } finally {
     showTyping(false);
     renderMessages();
@@ -1715,10 +1820,8 @@ async function pingStatus() {
     }
 
     // 4. Stop speech or voice recognition if active
-    if (isListening || audio.isSpeaking()) {
-      audio.stopRecognition();
-      audio.stopSpeaking();
-      setVoiceUIState('IDLE');
+    if (isListening || audio.isSpeaking() || recognitionState !== RecognitionState.IDLE) {
+      stopContinuousVoiceSession();
       return true;
     }
 
@@ -1757,9 +1860,13 @@ async function pingStatus() {
         bgParticles?.stop();
         // 3.5s grace period: prevents Android system permission dialogs from prematurely aborting speech recognition
         appBackgroundTimer = setTimeout(() => {
-          if (audio.isRecognizing) audio.stopRecognition();
-          if (audio.isSpeaking()) audio.stopSpeaking();
-          setVoiceUIState('IDLE');
+          if (isListening) {
+            stopContinuousVoiceSession();
+          } else {
+            stopAndNullRecognition();
+            if (audio.isSpeaking()) audio.stopSpeaking();
+            setVoiceUIState('IDLE');
+          }
         }, 3500);
       } else {
         if (appBackgroundTimer) {

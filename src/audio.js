@@ -62,21 +62,14 @@ class AudioEngine {
     this.lastTranscript = '';
     this.simulatedEnergy = 0;
     this.nativeListeners = [];
+    this.sessionEpoch = 0;
+    this.pauseTimeout = null;
+    this.watchdogInterval = null;
 
     // Web Speech Recognition Fallback (for browser preview)
     const SpeechRec = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
     this.webRecSupported = !!SpeechRec;
     this.webRecognition = null;
-    if (this.webRecSupported) {
-      try {
-        this.webRecognition = new SpeechRec();
-        this.webRecognition.continuous = false;
-        this.webRecognition.interimResults = true;
-        this.webRecognition.lang = 'en-US';
-      } catch {
-        this.webRecognition = null;
-      }
-    }
 
     // Speech Synthesis
     this.synth = typeof window !== 'undefined' ? (window.speechSynthesis || null) : null;
@@ -245,8 +238,8 @@ class AudioEngine {
   }
 
   // ----------------- Visualizer Audio Energy Modulation -----------------
-  // Prevents opening a conflicting concurrent getUserMedia() session on Android.
-  // Generates an organic, responsive energy waveform for the visualizer.
+  // Generates an organic, responsive energy waveform for the visualizer without
+  // competing for getUserMedia() audio hardware resources on Android.
   getMicEnergy() {
     if (!this.isRecognizing) return 0;
     const now = Date.now();
@@ -280,14 +273,62 @@ class AudioEngine {
     return true;
   }
 
-  async startRecognition({ onStart, onResult, onError, onEnd }) {
+  async startRecognition({ playFeedback = false, onStart, onResult, onError, onEnd } = {}) {
+    // Invalidate any active callbacks or lingering timeouts from prior turns
+    this.sessionEpoch++;
+    const currentEpoch = this.sessionEpoch;
+
     if (this.isRecognizing) {
-      await this.stopRecognition();
+      await this.stopRecognitionInternal();
     }
 
     this.isRecognizing = true;
     this.lastTranscript = '';
-    this.playChime('start');
+
+    if (playFeedback) {
+      this.playChime('start');
+    }
+
+    let turnFinalized = false;
+
+    const clearTimers = () => {
+      if (this.pauseTimeout) {
+        clearTimeout(this.pauseTimeout);
+        this.pauseTimeout = null;
+      }
+      if (this.watchdogInterval) {
+        clearInterval(this.watchdogInterval);
+        this.watchdogInterval = null;
+      }
+    };
+
+    const finalizeTurn = async (finalText) => {
+      if (turnFinalized || currentEpoch !== this.sessionEpoch) return;
+      turnFinalized = true;
+      this.isRecognizing = false;
+      clearTimers();
+
+      try {
+        if (Capacitor.isNativePlatform()) {
+          await SpeechRecognition.stop();
+          await this.clearNativeListeners();
+        } else if (this.webRecognition) {
+          const rec = this.webRecognition;
+          this.webRecognition = null;
+          rec.onstart = null;
+          rec.onresult = null;
+          rec.onerror = null;
+          rec.onend = null;
+          rec.stop();
+        }
+      } catch {
+        // ignore
+      }
+
+      const cleanMatch = (finalText != null ? finalText : this.lastTranscript || '').trim();
+      onResult?.(cleanMatch, true);
+      onEnd?.(cleanMatch);
+    };
 
     // 1. NATIVE ANDROID SPEECH RECOGNITION
     if (Capacitor.isNativePlatform()) {
@@ -307,23 +348,36 @@ class AudioEngine {
           throw new Error('permission_denied: Microphone permission denied');
         }
 
+        if (currentEpoch !== this.sessionEpoch) return;
+
         // Clean up any stale listeners
         await this.clearNativeListeners();
 
         // Register partial result listener
         const pSub = await SpeechRecognition.addListener('partialResults', (data) => {
-          const match = data?.matches?.[0] || '';
+          if (currentEpoch !== this.sessionEpoch || turnFinalized) return;
+          const match = (data?.matches && data.matches[0]) || '';
           if (match) {
             this.lastTranscript = match;
             onResult?.(match, false);
+
+            // Debounce short pauses: wait 1400ms after speech before concluding turn
+            if (this.pauseTimeout) clearTimeout(this.pauseTimeout);
+            this.pauseTimeout = setTimeout(() => {
+              if (currentEpoch === this.sessionEpoch && !turnFinalized) {
+                finalizeTurn(this.lastTranscript);
+              }
+            }, 1400);
           }
         });
         this.nativeListeners.push(pSub);
 
         // Register listening state listener
         const sSub = await SpeechRecognition.addListener('listeningState', (data) => {
-          if (data.status === 'stopped' && this.isRecognizing) {
-            // Stopped by native recognizer
+          if (currentEpoch !== this.sessionEpoch || turnFinalized) return;
+          if (data.status === 'stopped') {
+            // Android SpeechRecognizer stopped (e.g. speech utterance finished)
+            finalizeTurn(this.lastTranscript);
           }
         });
         this.nativeListeners.push(sSub);
@@ -331,7 +385,10 @@ class AudioEngine {
         onStart?.();
 
         // Start recognition session
-        const result = await SpeechRecognition.start({
+        // Note: in @capacitor-community/speech-recognition, start({ partialResults: true })
+        // resolves immediately upon successfully starting the Android Recognizer.
+        // We MUST NOT teardown or invoke onEnd on resolution!
+        await SpeechRecognition.start({
           language: 'en-US',
           maxResults: 3,
           prompt: 'Speak to JARVIS...',
@@ -339,62 +396,126 @@ class AudioEngine {
           popup: false,
         });
 
-        const finalMatch = (result?.matches && result.matches[0]) || this.lastTranscript;
-        this.isRecognizing = false;
-        await this.clearNativeListeners();
-        onResult?.(finalMatch, true);
-        onEnd?.(finalMatch);
+        // Watchdog: poll isListening() periodically in case of unnotified silence timeout
+        this.watchdogInterval = setInterval(async () => {
+          if (currentEpoch !== this.sessionEpoch || turnFinalized) {
+            clearInterval(this.watchdogInterval);
+            return;
+          }
+          try {
+            const { listening } = await SpeechRecognition.isListening();
+            if (!listening && !turnFinalized) {
+              clearInterval(this.watchdogInterval);
+              finalizeTurn(this.lastTranscript);
+            }
+          } catch {
+            // ignore
+          }
+        }, 2000);
       } catch (err) {
-        this.isRecognizing = false;
-        await this.clearNativeListeners();
-        onError?.(err);
+        if (currentEpoch === this.sessionEpoch && !turnFinalized) {
+          turnFinalized = true;
+          this.isRecognizing = false;
+          clearTimers();
+          await this.clearNativeListeners();
+          onError?.(err);
+        }
       }
       return;
     }
 
     // 2. WEB BROWSER FALLBACK (for development & desktop preview)
-    if (!this.webRecSupported || !this.webRecognition) {
+    const SpeechRec = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
+    if (!this.webRecSupported || !SpeechRec) {
       this.isRecognizing = false;
       onError?.(new Error('Speech recognition is not supported in this browser environment.'));
       return;
     }
 
     try {
-      let fullTranscript = '';
+      if (this.webRecognition) {
+        try {
+          const oldRec = this.webRecognition;
+          this.webRecognition = null;
+          oldRec.onstart = null;
+          oldRec.onresult = null;
+          oldRec.onerror = null;
+          oldRec.onend = null;
+          oldRec.stop();
+        } catch {
+          // ignore
+        }
+      }
+
+      this.webRecognition = new SpeechRec();
+      this.webRecognition.continuous = true;
+      this.webRecognition.interimResults = true;
+      this.webRecognition.lang = 'en-US';
+      let webFullTranscript = '';
 
       this.webRecognition.onstart = () => {
+        if (currentEpoch !== this.sessionEpoch) return;
         this.isRecognizing = true;
         onStart?.();
       };
 
       this.webRecognition.onresult = (event) => {
+        if (currentEpoch !== this.sessionEpoch || turnFinalized) return;
         let interim = '';
+        let finalChunk = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
-            fullTranscript += event.results[i][0].transcript;
+            finalChunk += event.results[i][0].transcript;
           } else {
             interim += event.results[i][0].transcript;
           }
         }
-        const current = fullTranscript || interim;
+        if (finalChunk) {
+          webFullTranscript += (webFullTranscript ? ' ' : '') + finalChunk.trim();
+        }
+        const current = (webFullTranscript + ' ' + interim).trim();
         this.lastTranscript = current;
-        onResult?.(current, !!fullTranscript);
+        onResult?.(current, false);
+
+        // Debounce short pause: wait 1400ms after speech before concluding turn
+        if (current) {
+          if (this.pauseTimeout) clearTimeout(this.pauseTimeout);
+          this.pauseTimeout = setTimeout(() => {
+            if (currentEpoch === this.sessionEpoch && !turnFinalized) {
+              finalizeTurn(this.lastTranscript);
+            }
+          }, 1400);
+        }
       };
 
       this.webRecognition.onerror = (err) => {
+        if (currentEpoch !== this.sessionEpoch || turnFinalized) return;
+        const msg = String(err?.error || err?.message || '');
+        if (msg === 'no-speech') {
+          finalizeTurn('');
+          return;
+        }
+        turnFinalized = true;
         this.isRecognizing = false;
+        clearTimers();
         onError?.(err);
       };
 
       this.webRecognition.onend = () => {
-        this.isRecognizing = false;
-        onEnd?.(fullTranscript || this.lastTranscript);
+        if (currentEpoch !== this.sessionEpoch) return;
+        if (!turnFinalized) {
+          finalizeTurn(this.lastTranscript);
+        }
       };
 
       this.webRecognition.start();
     } catch (err) {
-      this.isRecognizing = false;
-      onError?.(err);
+      if (currentEpoch === this.sessionEpoch && !turnFinalized) {
+        turnFinalized = true;
+        this.isRecognizing = false;
+        clearTimers();
+        onError?.(err);
+      }
     }
   }
 
@@ -415,7 +536,21 @@ class AudioEngine {
   }
 
   async stopRecognition() {
+    this.sessionEpoch++;
     this.isRecognizing = false;
+    this.lastTranscript = '';
+    if (this.pauseTimeout) {
+      clearTimeout(this.pauseTimeout);
+      this.pauseTimeout = null;
+    }
+    if (this.watchdogInterval) {
+      clearInterval(this.watchdogInterval);
+      this.watchdogInterval = null;
+    }
+    await this.stopRecognitionInternal();
+  }
+
+  async stopRecognitionInternal() {
     if (Capacitor.isNativePlatform()) {
       try {
         await SpeechRecognition.stop();
@@ -425,11 +560,21 @@ class AudioEngine {
       await this.clearNativeListeners();
     } else if (this.webRecognition) {
       try {
-        this.webRecognition.stop();
+        const rec = this.webRecognition;
+        this.webRecognition = null;
+        rec.onstart = null;
+        rec.onresult = null;
+        rec.onerror = null;
+        rec.onend = null;
+        rec.stop();
       } catch {
         // ignore
       }
     }
+  }
+
+  getRecognitionInstance() {
+    return this.webRecognition || (Capacitor.isNativePlatform() ? SpeechRecognition : null);
   }
 
   // ----------------- Speech Synthesis (TTS) -----------------
